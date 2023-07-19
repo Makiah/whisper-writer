@@ -8,6 +8,7 @@ import wave
 import webrtcvad
 import whisper
 from dotenv import load_dotenv
+import traceback
 
 
 if load_dotenv():
@@ -29,6 +30,11 @@ Record audio from the microphone and transcribe it using the OpenAI API.
 Recording stops when the user stops speaking.
 """
 def record_and_transcribe(status_queue, cancel_flag, config=None):
+    print("Calling record_and_transcribe")
+    print("Stack trace: ")
+    for line in traceback.format_stack():
+        print(line.strip())
+
     sample_rate = 16000
     frame_duration = 30  # 30ms, supported values: 10, 20, 30
     buffer_duration = 300  # 300ms
@@ -45,6 +51,7 @@ def record_and_transcribe(status_queue, cancel_flag, config=None):
         with sd.InputStream(samplerate=sample_rate, channels=1, dtype='int16', blocksize=sample_rate * frame_duration // 1000,
                             callback=lambda indata, frames, time, status: buffer.extend(indata[:, 0])):
             while not cancel_flag():
+                # print("Running")
                 if len(buffer) < sample_rate * frame_duration // 1000:
                     continue
 
@@ -53,6 +60,7 @@ def record_and_transcribe(status_queue, cancel_flag, config=None):
 
                 is_speech = vad.is_speech(np.array(frame).tobytes(), sample_rate)
                 if is_speech:
+                    print("Yes speech!")
                     recording.extend(frame)
                     num_silent_frames = 0
                 else:

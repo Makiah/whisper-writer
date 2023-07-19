@@ -1,5 +1,5 @@
 {
-    "use_api": true,
+    "use_api": false,
     "api_options": {
         "model": "whisper-1",
         "language": null,
@@ -8,7 +8,7 @@
     },
     "local_model_options": {
         "model": "base",
-        "device": null,
+        "device": "cuda",
         "language": null,
         "temperature": 0.0,
         "initial_prompt": null,

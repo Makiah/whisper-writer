@@ -2,10 +2,11 @@ import json
 import os
 import queue
 import threading
-import keyboard
+from pynput import keyboard as kb
 import pyautogui
 from transcription import record_and_transcribe
 from status_window import StatusWindow
+import time
 
 class ResultThread(threading.Thread):
     def __init__(self, *args, **kwargs):
@@ -84,6 +85,8 @@ def on_shortcut():
     if transcribed_text:
         pyautogui.write(transcribed_text, interval=config['writing_key_press_delay'])
 
+    exit(1)
+
 def format_keystrokes(key_string):
     return '+'.join(word.capitalize() for word in key_string.split('+'))
 
@@ -95,13 +98,9 @@ config = load_config_with_defaults()
 method = 'OpenAI\'s API' if config['use_api'] else 'a local model'
 status_queue = queue.Queue()
 
-keyboard.add_hotkey(config['activation_key'], on_shortcut)
-
 print(f'Script activated. Whisper is set to run using {method}. To change this, modify the "use_api" value in the src\\config.json file.')
 print(f'Press {format_keystrokes(config["activation_key"])} to start recording and transcribing. Press Ctrl+C on the terminal window to quit.')
-try:
-    keyboard.wait()  # Keep the script running to listen for the shortcut
-except KeyboardInterrupt:
-    print('\nExiting the script...')
-    os.system('exit')
 
+hotkey = kb.HotKey(kb.HotKey.parse('<ctrl>'), lambda x: print("something"))
+with kb.Listener(on_press=lambda x: on_shortcut(), on_release=lambda x: print("release")) as l:
+    l.join()
