@@ -29,28 +29,23 @@ def process_transcription(transcription, config=None):
 Record audio from the microphone and transcribe it using the OpenAI API.
 Recording stops when the user stops speaking.
 """
-def record_and_transcribe(status_queue, cancel_flag, config=None):
-    print("Calling record_and_transcribe")
-    print("Stack trace: ")
-    for line in traceback.format_stack():
-        print(line.strip())
-
+def record_and_transcribe(config):
     sample_rate = 16000
     frame_duration = 30  # 30ms, supported values: 10, 20, 30
-    buffer_duration = 300  # 300ms
+    # buffer_duration = 300  # 300ms
     silence_duration = config['silence_duration'] if config else 900  # 900ms
 
     vad = webrtcvad.Vad(3)  # Aggressiveness mode: 3 (highest)
     buffer = []
     recording = []
     num_silent_frames = 0
-    num_buffer_frames = buffer_duration // frame_duration
+    # num_buffer_frames = buffer_duration // frame_duration
     num_silence_frames = silence_duration // frame_duration
     try:
         print('Recording...') if config['print_to_terminal'] else ''
         with sd.InputStream(samplerate=sample_rate, channels=1, dtype='int16', blocksize=sample_rate * frame_duration // 1000,
                             callback=lambda indata, frames, time, status: buffer.extend(indata[:, 0])):
-            while not cancel_flag():
+            while True:
                 # print("Running")
                 if len(buffer) < sample_rate * frame_duration // 1000:
                     continue
@@ -64,15 +59,12 @@ def record_and_transcribe(status_queue, cancel_flag, config=None):
                     recording.extend(frame)
                     num_silent_frames = 0
                 else:
+                    print("No speech")
                     if len(recording) > 0:
                         num_silent_frames += 1
 
                     if num_silent_frames >= num_silence_frames:
                         break
-
-        if cancel_flag():
-            status_queue.put(('cancel', ''))
-            return ''
         
         audio_data = np.array(recording, dtype=np.int16)
         print('Recording finished. Size:', audio_data.size) if config['print_to_terminal'] else ''
@@ -85,7 +77,6 @@ def record_and_transcribe(status_queue, cancel_flag, config=None):
                 wf.setframerate(sample_rate)
                 wf.writeframes(audio_data.tobytes())
 
-        status_queue.put(('transcribing', 'Transcribing...'))
         print('Transcribing audio file...') if config['print_to_terminal'] else ''
         
         # If configured, transcribe the temporary audio file using the OpenAI API
@@ -112,18 +103,12 @@ def record_and_transcribe(status_queue, cancel_flag, config=None):
 
         # Remove the temporary audio file
         os.remove(temp_audio_file.name)
-        
-        if cancel_flag():
-            status_queue.put(('cancel', ''))
-            return ''
 
         result = response.get('text')
         print('Transcription:', result) if config['print_to_terminal'] else ''
-        status_queue.put(('idle', ''))
         
         return process_transcription(result.strip(), config) if result else ''
             
     except Exception as e:
         traceback.print_exc()
-        status_queue.put(('error', 'Error'))
 

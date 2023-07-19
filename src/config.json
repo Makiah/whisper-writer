@@ -7,7 +7,7 @@
         "initial_prompt": null
     },
     "local_model_options": {
-        "model": "base",
+        "model": "base.en",
         "device": "cuda",
         "language": null,
         "temperature": 0.0,
