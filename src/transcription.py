@@ -7,25 +7,16 @@ import tempfile
 import wave
 import webrtcvad
 import whisper
-from dotenv import load_dotenv
 import traceback
+from computercontroller import ComputerController
 
+def process_transcription(transcription, controller: ComputerController):
+    if transcription.endswith('.'):
+        transcription = transcription[:-1]
+    transcription = transcription.lower()
+    controller.process(transcription)
 
-if load_dotenv():
-    openai.api_key = os.getenv('OPENAI_API_KEY')
-
-def process_transcription(transcription, config=None):
-    if config:
-        if config['remove_trailing_period'] and transcription.endswith('.'):
-            transcription = transcription[:-1]
-        if config['add_trailing_space']:
-            transcription += ' '
-        if config['remove_capitalization']:
-            transcription = transcription.lower()
-    
-    return transcription
-
-def transcribe_recording(sample_rate, config, recording):
+def transcribe_recording(sample_rate, config, recording, controller):
     audio_data = np.array(recording, dtype=np.int16)
     print('Recording finished. Size:', audio_data.size) if config['print_to_terminal'] else ''
     
@@ -67,18 +58,20 @@ def transcribe_recording(sample_rate, config, recording):
     result = response.get('text')
     print('Transcription:', result) if config['print_to_terminal'] else ''
     
-    return process_transcription(result.strip(), config) if result else ''
+    process_transcription(result.strip(), controller) if result else ''
 
 """
 Record audio from the microphone and transcribe it using the OpenAI API.
 Recording stops when the user stops speaking.
 """
 def record_and_transcribe(config):
+    controller = ComputerController()
+
     sample_rate = 16000
     frame_duration = 30  # 30ms, supported values: 10, 20, 30
-    done_speaking_silence_duration = config['silence_duration'] if config else 900  # 900ms
-    acceptable_mid_speaking_pause_duration = 300
-    minimum_speaking_duration = 800
+    done_speaking_silence_duration = config['silence_duration'] if config else 300  # 900ms
+    acceptable_mid_speaking_pause_duration = 150
+    minimum_speaking_duration = 400
 
     def to_frames(duration):
         return duration // frame_duration
@@ -106,19 +99,11 @@ def record_and_transcribe(config):
                 frame = buffer[:sample_rate * frame_duration // 1000]
                 buffer = buffer[sample_rate * frame_duration // 1000:]
 
-                np_frame = np.array(frame)
-                np_frame_avg = abs(np.average(np_frame))
-
-                speech_detected = np_frame_avg > 20 and vad.is_speech(np_frame.tobytes(), sample_rate)
-                actively_recording = actively_recording or speech_detected
-
-                if actively_recording:
-                    recording.extend(frame)
-                    speaking_frames += 1
-
-                if speech_detected:
-                    print(f"Speech detected! Average of frame is {np_frame_avg}")
+                if vad.is_speech(np.array(frame).tobytes(), sample_rate):
+                    print("Speech detected!")
                     num_speech_not_detected_frames = 0
+                    speaking_frames += 1
+                    recording.extend(frame)
                 else:
                     if len(recording) == 0:
                         continue
@@ -133,13 +118,11 @@ def record_and_transcribe(config):
                         print(f"Not enough speaking time (got {speaking_frames}, needed {minimum_speaking_frames}), ignoring that last bit")
                         recording = []
                         speaking_frames = 0
-                        actively_recording = False
                     elif num_speech_not_detected_frames >= done_speaking_silence_frames:
                         print(f"Long enough, length is {speaking_frames} required is {minimum_speaking_frames}")
-                        transcribe_recording(sample_rate, config, recording)
+                        transcribe_recording(sample_rate, config, recording, controller)
                         recording = []
                         speaking_frames = 0
-                        actively_recording = False
 
     except Exception as e:
         traceback.print_exc()
