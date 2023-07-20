@@ -1,6 +1,5 @@
 import traceback
 import numpy as np
-import openai
 import os
 import sounddevice as sd
 import tempfile
@@ -16,7 +15,7 @@ def process_transcription(transcription, controller: ComputerController):
     transcription = transcription.lower()
     controller.process(transcription)
 
-def transcribe_recording(sample_rate, config, recording, controller):
+def transcribe_recording(sample_rate, config, recording, controller, model):
     audio_data = np.array(recording, dtype=np.int16)
     print('Recording finished. Size:', audio_data.size) if config['print_to_terminal'] else ''
     
@@ -29,27 +28,13 @@ def transcribe_recording(sample_rate, config, recording, controller):
             wf.writeframes(audio_data.tobytes())
 
     print('Transcribing audio file...') if config['print_to_terminal'] else ''
-    
-    # If configured, transcribe the temporary audio file using the OpenAI API
-    if config['use_api']:
-        api_options = config['api_options']
-        with open(temp_audio_file.name, 'rb') as audio_file:
-            response = openai.Audio.transcribe(model=api_options['model'], 
-                                                file=audio_file,
-                                                language=api_options['language'],
-                                                prompt=api_options['initial_prompt'],
-                                                temperature=api_options['temperature'],)
-    # Otherwise, transcribe the temporary audio file using a local model
-    elif not config['use_api']:
-        model_options = config['local_model_options']
-        model = whisper.load_model(name=model_options['model'],
-                                    device=model_options['device'])
-        response = model.transcribe(audio=temp_audio_file.name,
-                                    language=model_options['language'],
-                                    verbose=None if not config['print_to_terminal'] else model_options['verbose'],
-                                    initial_prompt=model_options['initial_prompt'],
-                                    condition_on_previous_text=model_options['condition_on_previous_text'],
-                                    temperature=model_options['temperature'],)
+
+    response = model.transcribe(audio=temp_audio_file.name,
+                                language=None,
+                                verbose=True,
+                                initial_prompt=None,
+                                condition_on_previous_text=False,
+                                temperature=0.0,)
     
 
     # Remove the temporary audio file
@@ -65,6 +50,8 @@ Record audio from the microphone and transcribe it using the OpenAI API.
 Recording stops when the user stops speaking.
 """
 def record_and_transcribe(config):
+    model = whisper.load_model(name="base.en", device="cuda")
+
     controller = ComputerController()
 
     sample_rate = 16000
@@ -79,7 +66,6 @@ def record_and_transcribe(config):
     vad = webrtcvad.Vad(3)  # Aggressiveness mode: 3 (highest)
     buffer = []
     recording = []
-    actively_recording = False
     num_speech_not_detected_frames = 0
     speaking_frames = 0
     done_speaking_silence_frames = to_frames(done_speaking_silence_duration)
@@ -120,7 +106,7 @@ def record_and_transcribe(config):
                         speaking_frames = 0
                     elif num_speech_not_detected_frames >= done_speaking_silence_frames:
                         print(f"Long enough, length is {speaking_frames} required is {minimum_speaking_frames}")
-                        transcribe_recording(sample_rate, config, recording, controller)
+                        transcribe_recording(sample_rate, config, recording, controller, model)
                         recording = []
                         speaking_frames = 0
 
