@@ -1,9 +1,6 @@
 import traceback
 import numpy as np
-import os
 import sounddevice as sd
-import tempfile
-import wave
 import webrtcvad
 import traceback
 from computercontroller import ComputerController
@@ -19,31 +16,16 @@ class TranscriptionHandler:
         transcription = transcription.lower()
         self.controller.process(transcription)
 
-    def transcribe_recording(self, sample_rate, recording):
-        audio_data = np.array(recording, dtype=np.int16)
-        print('Recording finished. Size:', audio_data.size)
-        
-        # Save the recorded audio as a temporary WAV file on disk
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_audio_file:
-            with wave.open(temp_audio_file.name, 'wb') as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)  # 2 bytes (16 bits) per sample
-                wf.setframerate(sample_rate)
-                wf.writeframes(audio_data.tobytes())
-
-        print('Transcribing audio file...')
-
-        response = self.model.transcribe(audio=temp_audio_file.name,
+    def transcribe_recording(self, recording):
+        # https://github.com/openai/whisper/discussions/908
+        audio_data = np.array(recording, dtype=np.int16).flatten().astype(np.float32) / 32768.0 
+        print('Transcribing audio...')
+        response = self.model.transcribe(audio=audio_data,
                                     language=None,
                                     verbose=True,
                                     initial_prompt=None,
                                     condition_on_previous_text=False,
                                     temperature=0.0,)
-        
-
-        # Remove the temporary audio file
-        os.remove(temp_audio_file.name)
-
         result = response.get('text')
         print('Transcription:', result)
         
@@ -106,7 +88,7 @@ class TranscriptionHandler:
                             speaking_frames = 0
                         elif num_speech_not_detected_frames >= done_speaking_silence_frames:
                             print(f"Long enough, length is {speaking_frames} required is {minimum_speaking_frames}")
-                            self.transcribe_recording(sample_rate, recording)
+                            self.transcribe_recording(recording)
                             recording = []
                             speaking_frames = 0
 
